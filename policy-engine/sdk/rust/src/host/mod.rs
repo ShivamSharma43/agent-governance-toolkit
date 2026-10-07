@@ -1,5 +1,5 @@
 use crate::{
-    AnnotatorDispatcher, EnforcementMode, InterceptionPoint, JsonValue, Limits, Manifest,
+    AnnotatorDispatcher, Decision, EnforcementMode, InterceptionPoint, JsonValue, Limits, Manifest,
     PolicyDispatcher, Runtime, RuntimeError,
 };
 use std::{convert::Infallible, fmt, fs, path::Path, sync::Arc};
@@ -353,8 +353,11 @@ pub struct AgentControl {
     runtime: Runtime,
     approval_resolver: Option<ApprovalResolver>,
     /// Retained so [`AgentControl::with_telemetry`] can rebuild the
-    /// runtime. `agent_control_spec::Runtime` takes its telemetry sink at
-    /// construction and exposes no setter.
+    /// runtime and so a transform is revalidated against the limits the
+    /// runtime enforces. `agent_control_spec::Runtime` takes its telemetry
+    /// sink at construction and exposes no setter, and exposes no
+    /// annotator or limit accessors. `None` only for a control built
+    /// through the deprecated [`AgentControl::new`].
     parts: Option<RuntimeParts>,
 }
 
@@ -397,6 +400,24 @@ impl fmt::Debug for AgentControl {
 }
 
 impl AgentControl {
+    /// Wrap an already built [`Runtime`].
+    ///
+    /// `agent_control_spec` 0.4.0-alpha.3 exposes neither the annotator
+    /// dispatcher nor the [`Limits`] a `Runtime` was built with, so a
+    /// control built here cannot know them. It therefore fails closed on
+    /// every `transform` verdict with `host_error:transform_invalid`,
+    /// because the transformed snapshot cannot be revalidated against the
+    /// configured limits. [`with_telemetry`](Self::with_telemetry) cannot
+    /// rebuild the runtime and leaves it unchanged, and the removed
+    /// manifest field check ([`reject_removed_manifest_fields`]) is not run.
+    ///
+    /// Use [`from_manifest_with_dispatchers_and_limits`](Self::from_manifest_with_dispatchers_and_limits)
+    /// or another manifest constructor instead.
+    #[deprecated(
+        note = "cannot recover the runtime's limits or annotator dispatcher, so transforms fail \
+                closed and telemetry cannot be installed; build from a manifest with \
+                `AgentControl::from_manifest_with_dispatchers_and_limits` instead"
+    )]
     pub fn new(runtime: Runtime) -> Self {
         Self {
             runtime,
@@ -495,12 +516,14 @@ impl AgentControl {
             Arc::clone(&policy),
             limits,
         )?;
-        let mut control = Self::new(runtime);
-        control.parts = Some(RuntimeParts {
-            annotations,
-            limits,
-        });
-        Ok(control)
+        Ok(Self {
+            runtime,
+            approval_resolver: None,
+            parts: Some(RuntimeParts {
+                annotations,
+                limits,
+            }),
+        })
     }
 
     pub fn from_manifest_chain(manifests: &[&str]) -> Result<Self, RuntimeError> {
@@ -529,11 +552,15 @@ impl AgentControl {
     /// (added as a dependency) for OpenTelemetry metrics.
     /// Requires an `AgentControl` built from a manifest. `agent_control_spec`
     /// takes the sink at `Runtime` construction and exposes no setter or
-    /// annotator/limit accessors, so a control built through
+    /// annotator/limit accessors, so a control built through the deprecated
     /// [`AgentControl::new`] keeps the sink the runtime was constructed with.
     /// Tracked in docs/acs-retarget.md.
     pub fn with_telemetry(mut self, telemetry: Arc<dyn crate::TelemetrySink>) -> Self {
         if let Some(parts) = self.parts.clone() {
+            // The rebuild reuses the manifest, dispatchers and limits that
+            // already passed `Runtime::with_telemetry_perf_and_limits` when
+            // this control was built, and that validation is deterministic,
+            // so it cannot fail here.
             if let Ok(runtime) = Runtime::with_telemetry_perf_and_limits(
                 self.runtime.manifest().clone(),
                 parts.annotations,
@@ -559,20 +586,39 @@ impl AgentControl {
         mode: EnforcementMode,
     ) -> HostEvaluation {
         let engine = self.runtime.evaluate_point(intervention_point, snapshot);
-        let limits = self
-            .parts
-            .as_ref()
-            .map(|parts| parts.limits)
-            .unwrap_or_default();
-        HostEvaluation::from_engine_with_limits(intervention_point, engine, mode, limits)
-            .unwrap_or_else(|(error, detail)| HostEvaluation {
-                verdict: agent_hooks::Verdict::host_error(error, Some(detail)),
-                policy_input: None,
-                transformed_policy_target: None,
-                action_identity: None,
-                input_identity: None,
-                enforced_identity: None,
-            })
+        let evaluation = match &self.parts {
+            Some(parts) => HostEvaluation::from_engine_with_limits(
+                intervention_point,
+                engine,
+                mode,
+                parts.limits,
+            ),
+            // A control built through the deprecated `new` cannot know the
+            // limits its runtime enforces. Revalidating a transformed
+            // snapshot against `Limits::default()` would admit a value a
+            // caller who tightened them deliberately excluded, so fail
+            // closed. Limits are only consulted for a transform.
+            None if engine.verdict.decision == Decision::Transform
+                && intervention_point.transform_permitted() =>
+            {
+                Err((
+                    agent_hooks::HostError::TransformInvalid,
+                    "the transformed snapshot cannot be revalidated because this AgentControl \
+                     was built with AgentControl::new, which cannot recover the runtime's \
+                     limits; build it from a manifest instead"
+                        .to_string(),
+                ))
+            }
+            None => HostEvaluation::from_engine(intervention_point, engine, mode),
+        };
+        evaluation.unwrap_or_else(|(error, detail)| HostEvaluation {
+            verdict: agent_hooks::Verdict::host_error(error, Some(detail)),
+            policy_input: None,
+            transformed_policy_target: None,
+            action_identity: None,
+            input_identity: None,
+            enforced_identity: None,
+        })
     }
 
     /// Resolves an intervention point result into proceed, block, or suspend.

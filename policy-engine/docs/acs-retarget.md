@@ -258,7 +258,12 @@ that loading one over the network is a first class API.
   telemetry. The host uses those getters rather than retaining duplicate
   construction state. Annotator and limit accessors and a telemetry setter are
   still absent, so `with_telemetry` retains those inputs and still requires a
-  manifest-based constructor.
+  manifest-based constructor. `AgentControl::new(runtime)` cannot recover them
+  and is deprecated. A control built through it fails closed on every
+  `transform` with `host_error:transform_invalid` rather than revalidating the
+  transformed snapshot against `Limits::default()`, which would admit a value a
+  runtime built with tighter limits excludes. Its `with_telemetry` leaves the
+  runtime unchanged, and it skips the removed manifest field check.
 - Upstream artifact diagnostics use the in-process backend and a different
   shape. AGT retains its bounded, source-located OPA lint diagnostics and
   explicit executable selection rather than silently changing that API.

@@ -5,6 +5,46 @@ entries appear first.
 
 ---
 
+## Rust `AgentControl::new(runtime)` is deprecated and fails closed on transforms
+
+**Date:** TBD
+
+**Affected**
+
+- Rust hosts that wrap a hand-built `Runtime` with `AgentControl::new` and
+  receive `transform` verdicts
+
+**What changed**
+
+`agent-control-spec` 0.4.0-alpha.3 does not expose the `Limits` or annotator
+dispatcher a `Runtime` was built with, so `AgentControl::new` cannot know them.
+It used to revalidate a transformed snapshot against `Limits::default()`, which
+admits a value a runtime built with tighter limits (for example a smaller
+`max_snapshot_bytes`) excludes. A control built through `new` now fails closed
+on every `transform` verdict with `host_error:transform_invalid`. Allow and
+deny verdicts are unaffected. `new` is marked `#[deprecated]`; its
+`with_telemetry` still cannot install a sink.
+
+**How to update**
+
+Build the control from the manifest and pass the dispatchers and limits the
+runtime would have used:
+
+```rust
+let control = AgentControl::from_manifest_with_dispatchers_and_limits(
+    manifest,
+    Some(annotator_dispatcher),
+    Some(policy_dispatcher),
+    limits,
+)?;
+```
+
+`from_manifest_with_dispatchers` does the same with `Limits::default()`. Both
+also run the removed manifest field check that `new` skips, and support
+`with_telemetry`.
+
+---
+
 ## URL sourced manifests are rejected if they declare a local filesystem path field
 
 **Date:** TBD
