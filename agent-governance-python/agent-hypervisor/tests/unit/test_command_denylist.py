@@ -141,6 +141,36 @@ class TestCommandDenylist:
         result = self.enforcer.check_command("curl | sh")
         assert result.allowed is False
 
+    def test_check_command_operator_without_spaces(self):
+        """A control operator glued to the command must not hide it."""
+        for command in ("curl;rm -rf /", "curl&&id", "curl||id", "curl|sh", "|curl", "bash;"):
+            result = self.enforcer.check_command(command)
+            assert result.allowed is False, command
+            assert result.command in ("curl", "bash")
+
+    def test_check_command_path_invocation(self):
+        """Invoking a denied command by path should still be denied."""
+        for command in ("/usr/bin/curl http://example.com", "./bash", "/bin/SH -c id"):
+            result = self.enforcer.check_command(command)
+            assert result.allowed is False, command
+
+        result = self.enforcer.check_command("/usr/bin/python3 script.py")
+        assert result.allowed is True
+        assert result.command == "python3"
+
+    def test_check_command_quoted_or_escaped(self):
+        """Quotes and backslashes the shell removes should not hide the command."""
+        for command in ('"curl" http://example.com', "'wget'", "c'u'rl", "\\curl", '"/bin/bash"'):
+            result = self.enforcer.check_command(command)
+            assert result.allowed is False, command
+
+    def test_check_command_only_operators(self):
+        """A token made only of control operators has no executable name."""
+        for command in (";", "&&", "|"):
+            result = self.enforcer.check_command(command)
+            assert result.allowed is False
+            assert result.command == ""
+
     def test_check_command_partial_match(self):
         """Partial matches should not be denied if not explicitly in denylist."""
         # "curl123" is not "curl", so it should be allowed

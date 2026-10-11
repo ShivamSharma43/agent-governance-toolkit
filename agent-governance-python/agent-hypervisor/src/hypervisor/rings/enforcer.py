@@ -11,6 +11,7 @@ Also provides command denylist enforcement for subprocess execution.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -268,9 +269,26 @@ class RingEnforcer:
 
         base_command = stripped.split()[0]
 
-        # Strip trailing shell metacharacters that could be used for command injection
-        # e.g., "curl;" -> "curl", "curl&&" -> "curl"
-        base_command = base_command.rstrip(";&|")
+        # Remove shell quoting and escapes, which the shell drops before running
+        # the command, e.g., "'curl'" -> "curl", "c\url" -> "curl"
+        base_command = re.sub(r"[\"'\\]", "", base_command)
+
+        # Cut at the first shell control operator so the command before it is checked
+        # e.g., "curl;" -> "curl", "curl&&id" -> "curl", "|curl" -> "curl"
+        segments = [segment for segment in re.split(r"[;&|]", base_command) if segment]
+        base_command = segments[0] if segments else ""
+
+        # Match the executable name rather than the path used to invoke it
+        # e.g., "/usr/bin/curl" -> "curl", "./bash" -> "bash"
+        base_command = base_command.rsplit("/", 1)[-1]
+
+        if not base_command:
+            return CommandCheckResult(
+                allowed=False,
+                reason="Command contains no executable name",
+                command="",
+                matched_denylist_entry=None,
+            )
 
         base_command_lower = base_command.lower()
 
