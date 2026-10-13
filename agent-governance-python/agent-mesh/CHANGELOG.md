@@ -156,6 +156,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   O(log n) per append (worst-case O(n) when tree capacity doubles). Exported
   `merkle_root` values change for the affected sizes; see
   `BREAKING_CHANGES.md`.
+- `NetworkTrustEngine.apply_temporal_decay()` now decays agents that never
+  received a positive signal. Their last-signal time defaulted to the current
+  pass, so they never decayed at all, against spec §12.1. The clock now starts
+  at the first decay pass that sees the agent, so a new agent still does not
+  decay on that first pass.
 
 ### Changed
 
