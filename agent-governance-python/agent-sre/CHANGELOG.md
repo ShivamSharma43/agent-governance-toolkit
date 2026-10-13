@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error ratio (`total`). It used to divide by `total / window_seconds`, which
   inflated the rate by the window length (about 2.6 million for the default
   30 days), so a single error fired both burn rate alerts.
+- `AnomalyDetector` now reports a spike in a metric whose name contains "error"
+  (such as `error_rate`) as `ERROR_RATE_SURGE`. The "rate" check ran first, so
+  these metrics were reported as `THROUGHPUT_DROP`.
 - **Provider fallbacks on the default install.** Without an advanced provider,
   `get_slo_detector()` and `get_chaos_engine()` raise a `NotImplementedError` naming
   the missing class and the entry point group a provider package must register,
