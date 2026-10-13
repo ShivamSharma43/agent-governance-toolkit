@@ -239,7 +239,7 @@ class RingEnforcer:
 
         This method validates whether a command (or command string with arguments)
         is present in the global DENIED_COMMANDS list. The check is performed
-        against the base command name (first token before any whitespace).
+        against the base command name (the first command the shell would run).
         Matching is case-insensitive to prevent bypasses via case variation.
 
         Args:
@@ -257,7 +257,6 @@ class RingEnforcer:
                 matched_denylist_entry=None,
             )
 
-        # Extract base command (first token before whitespace)
         stripped = command.strip()
         if not stripped:
             return CommandCheckResult(
@@ -267,16 +266,21 @@ class RingEnforcer:
                 matched_denylist_entry=None,
             )
 
-        base_command = stripped.split()[0]
-
         # Remove shell quoting and escapes, which the shell drops before running
-        # the command, e.g., "'curl'" -> "curl", "c\url" -> "curl"
-        base_command = re.sub(r"[\"'\\]", "", base_command)
+        # the command, e.g., "'curl'" -> "curl", "c\url" -> "curl", "$'curl'" -> "curl"
+        normalized = re.sub(r"\$(?=[\"'])", "", stripped)
+        normalized = re.sub(r"[\"'\\]", "", normalized)
 
-        # Cut at the first shell control operator so the command before it is checked
-        # e.g., "curl;" -> "curl", "curl&&id" -> "curl", "|curl" -> "curl"
-        segments = [segment for segment in re.split(r"[;&|]", base_command) if segment]
-        base_command = segments[0] if segments else ""
+        # Split at whitespace, control operators, redirections, subshells and command
+        # substitution so the first command the shell runs is checked
+        # e.g., "curl;" -> "curl", "|curl" -> "curl", "curl>out" -> "curl", "$(curl x)" -> "curl"
+        tokens = [token for token in re.split(r"[\s;&|<>()`]+", normalized) if token]
+
+        # Skip words that open a group or negate the command that follows them,
+        # and the "$" left over from "$(", e.g., "{ curl; }" -> "curl", "! curl" -> "curl"
+        while tokens and tokens[0] in ("{", "!", "$"):
+            tokens.pop(0)
+        base_command = tokens[0] if tokens else ""
 
         # Match the executable name rather than the path used to invoke it
         # e.g., "/usr/bin/curl" -> "curl", "./bash" -> "bash"

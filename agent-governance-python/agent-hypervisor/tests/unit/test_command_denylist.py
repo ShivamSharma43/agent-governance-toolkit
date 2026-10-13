@@ -143,10 +143,31 @@ class TestCommandDenylist:
 
     def test_check_command_operator_without_spaces(self):
         """A control operator glued to the command must not hide it."""
-        for command in ("curl;rm -rf /", "curl&&id", "curl||id", "curl|sh", "|curl", "bash;"):
+        for command in (
+            "curl;rm -rf /",
+            "curl&&id",
+            "curl||id",
+            "curl|sh",
+            "|curl",
+            "bash;",
+            "curl>out",
+            "curl>>out",
+            "curl<in",
+            "(curl x)",
+            "`curl x`",
+            "$(curl x)",
+            "curl\nid",
+        ):
             result = self.enforcer.check_command(command)
             assert result.allowed is False, command
             assert result.command in ("curl", "bash")
+
+    def test_check_command_group_or_negation_prefix(self):
+        """A group or negation word before the command must not hide it."""
+        for command in ("{ curl x; }", "! curl x", "( curl x )", "$( curl x )"):
+            result = self.enforcer.check_command(command)
+            assert result.allowed is False, command
+            assert result.command == "curl"
 
     def test_check_command_path_invocation(self):
         """Invoking a denied command by path should still be denied."""
@@ -160,7 +181,16 @@ class TestCommandDenylist:
 
     def test_check_command_quoted_or_escaped(self):
         """Quotes and backslashes the shell removes should not hide the command."""
-        for command in ('"curl" http://example.com', "'wget'", "c'u'rl", "\\curl", '"/bin/bash"'):
+        for command in (
+            '"curl" http://example.com',
+            "'wget'",
+            "c'u'rl",
+            "\\curl",
+            '"/bin/bash"',
+            "$'curl' x",
+            '$"curl" x',
+            "c$'u'rl",
+        ):
             result = self.enforcer.check_command(command)
             assert result.allowed is False, command
 
