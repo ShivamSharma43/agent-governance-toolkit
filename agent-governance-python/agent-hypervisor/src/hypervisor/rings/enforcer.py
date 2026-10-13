@@ -271,6 +271,13 @@ class RingEnforcer:
         normalized = re.sub(r"\$(?=[\"'])", "", stripped)
         normalized = re.sub(r"[\"'\\]", "", normalized)
 
+        # Drop redirections with their targets, which the shell applies before running
+        # the command, so a target is never taken for the executable
+        # e.g., ">out curl" -> "curl", "2>&1 curl" -> "curl", "< /dev/null curl" -> "curl"
+        normalized = re.sub(
+            r"(?:(?<![^\s;&|()`])\d+|&)?[<>]+[&|]?\s*[^\s;&|<>()`]*", " ", normalized
+        )
+
         # Split at whitespace, control operators, redirections, subshells and command
         # substitution so the first command the shell runs is checked
         # e.g., "curl;" -> "curl", "|curl" -> "curl", "curl>out" -> "curl", "$(curl x)" -> "curl"

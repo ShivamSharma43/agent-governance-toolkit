@@ -157,10 +157,33 @@ class TestCommandDenylist:
             "`curl x`",
             "$(curl x)",
             "curl\nid",
+            ">out curl",
+            "2>&1 curl",
+            "</dev/null curl",
+            "> out curl",
+            ">>out curl",
+            "&>out curl",
+            "<<<word curl",
+            "curl 2>&1",
         ):
             result = self.enforcer.check_command(command)
             assert result.allowed is False, command
             assert result.command in ("curl", "bash")
+
+    def test_check_command_redirection_target_is_not_the_command(self):
+        """A redirection is dropped with its target, not taken for the executable."""
+        result = self.enforcer.check_command("python3>out x.py")
+        assert result.allowed is True
+        assert result.command == "python3"
+
+        result = self.enforcer.check_command("2>&1 python3 x.py")
+        assert result.allowed is True
+        assert result.command == "python3"
+
+        for command in (">out", "2>&1", "< /dev/null"):
+            result = self.enforcer.check_command(command)
+            assert result.allowed is False, command
+            assert result.command == ""
 
     def test_check_command_group_or_negation_prefix(self):
         """A group or negation word before the command must not hide it."""
