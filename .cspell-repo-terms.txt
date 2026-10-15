@@ -967,6 +967,7 @@ ringenforcer
 rmal
 rmcp
 rmtree
+rollouts
 roundtrips
 rpartition
 rrdatas
