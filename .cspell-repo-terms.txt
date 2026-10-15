@@ -691,6 +691,7 @@ kwonlyargs
 laintext
 langflow
 langgenius
+lastgroup
 lawcontinue
 levelname
 lookahead
