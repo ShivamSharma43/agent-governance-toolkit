@@ -89,6 +89,31 @@ RING_CONSTRAINTS: dict[ExecutionRing, ResourceConstraints] = {
     ),
 }
 
+# A redirection operator (with an optional fd number at the start of a word, "&>",
+# ">&", ">|" or "<<<") and the shell word that is its target. The target keeps
+# quoted parts ("...", '...', $'...', $"...") and backslash escapes together with
+# the plain characters around them, so a quoted or escaped space stays inside it.
+# An unterminated quote runs to the end of the command.
+_REDIRECTION = re.compile(
+    r"(?:(?<![^\s;&|()`])\d+|&)?[<>]+[&|]?\s*"
+    r"(?P<target>(?:"
+    r"\$'(?:[^'\\]|\\.)*'?"
+    r'|\$?"(?:[^"\\]|\\.)*"?'
+    r"|'[^']*'?"
+    r"|\\.?"
+    r"|[^\s;&|<>()`'\"\\]"
+    r")*)",
+    re.DOTALL,
+)
+
+
+def _remove_quoting(text: str) -> str:
+    """Remove the quotes and backslashes the shell drops before running a command.
+
+    e.g., "'curl'" -> "curl", "c\\url" -> "curl", "$'curl'" -> "curl"
+    """
+    return re.sub(r"[\"'\\]", "", re.sub(r"\$(?=[\"'])", "", text))
+
 
 @dataclass
 class RingCheckResult:
@@ -266,22 +291,26 @@ class RingEnforcer:
                 matched_denylist_entry=None,
             )
 
+        # Drop redirections with their targets, which the shell applies before running
+        # the command, so a target is never taken for the executable. This runs before
+        # the quotes are removed, so a quoted or escaped space stays in the target
+        # e.g., ">out curl" -> "curl", "2>&1 curl" -> "curl", '>"my file" curl' -> "curl"
+        targets = [match.group("target") for match in _REDIRECTION.finditer(stripped)]
+        normalized = _REDIRECTION.sub(" ", stripped)
+
         # Remove shell quoting and escapes, which the shell drops before running
         # the command, e.g., "'curl'" -> "curl", "c\url" -> "curl", "$'curl'" -> "curl"
-        normalized = re.sub(r"\$(?=[\"'])", "", stripped)
-        normalized = re.sub(r"[\"'\\]", "", normalized)
-
-        # Drop redirections with their targets, which the shell applies before running
-        # the command, so a target is never taken for the executable
-        # e.g., ">out curl" -> "curl", "2>&1 curl" -> "curl", "< /dev/null curl" -> "curl"
-        normalized = re.sub(
-            r"(?:(?<![^\s;&|()`])\d+|&)?[<>]+[&|]?\s*[^\s;&|<>()`]*", " ", normalized
-        )
+        normalized = _remove_quoting(normalized)
 
         # Split at whitespace, control operators, redirections, subshells and command
         # substitution so the first command the shell runs is checked
         # e.g., "curl;" -> "curl", "|curl" -> "curl", "curl>out" -> "curl", "$(curl x)" -> "curl"
         tokens = [token for token in re.split(r"[\s;&|<>()`]+", normalized) if token]
+
+        # A redirection to an empty file name ('>"" curl') fails in the shell and
+        # the command never runs, so treat it as having no executable name
+        if any(target and not _remove_quoting(target) for target in targets):
+            tokens = []
 
         # Skip words that open a group or negate the command that follows them,
         # and the "$" left over from "$(", e.g., "{ curl; }" -> "curl", "! curl" -> "curl"

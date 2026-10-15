@@ -165,6 +165,9 @@ class TestCommandDenylist:
             "&>out curl",
             "<<<word curl",
             "curl 2>&1",
+            '>"my file" curl',
+            ">$'a b' curl",
+            ">a\\ b curl",
         ):
             result = self.enforcer.check_command(command)
             assert result.allowed is False, command
@@ -180,7 +183,24 @@ class TestCommandDenylist:
         assert result.allowed is True
         assert result.command == "python3"
 
-        for command in (">out", "2>&1", "< /dev/null"):
+        for command in (
+            '>"my file" python3 x.py',
+            "python3 >'my file.txt' x.py",
+            ">a\\ b python3",
+            'python3 x.py 2>"err log"',
+        ):
+            result = self.enforcer.check_command(command)
+            assert result.allowed is True, command
+            assert result.command == "python3"
+
+        # The target ends where the shell ends it: a backslash escapes a quote
+        # inside "..." and $'...', but not inside '...'
+        for command in (">'a\\' curl", '>"a\\" b" curl', ">$'a\\' b' curl"):
+            result = self.enforcer.check_command(command)
+            assert result.allowed is False, command
+
+        # A bare redirection, or an empty or unterminated target, leaves no command to run
+        for command in (">out", "2>&1", "< /dev/null", '>"" curl', ">'' python3", '>"x curl'):
             result = self.enforcer.check_command(command)
             assert result.allowed is False, command
             assert result.command == ""
