@@ -332,9 +332,8 @@ class TestSpecParsing:
     def test_every_crd_rollback_operator_triggers_rollback(self, operator, metrics):
         crd = generate_crd_manifest()
         schema = crd["spec"]["versions"][0]["schema"]["openAPIV3Schema"]
-        operators = schema["properties"]["spec"]["properties"]["rollbackConditions"][
-            "items"
-        ]["properties"]["operator"]["enum"]
+        conditions = schema["properties"]["spec"]["properties"]["rollbackConditions"]
+        operators = conditions["items"]["properties"]["operator"]["enum"]
         assert operator in operators
 
         r = Reconciler()
