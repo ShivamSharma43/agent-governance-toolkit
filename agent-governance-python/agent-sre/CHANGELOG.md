@@ -66,6 +66,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CRD (`rollbackConditions[].operator`) accepts `gt` and `lt`, but
   `should_rollback()` only handled `gte` and `lte` and returned `False` for
   anything else, so those rollback conditions never fired.
+- `FleetManager.status()` now reports `CRITICAL` when most agents are unhealthy,
+  counting degraded agents as well as unresponsive ones. It only counted
+  unresponsive agents, so a fleet where every agent was degraded (or two of three
+  were degraded and the third unresponsive) was reported as `DEGRADED`.
 
 ## [0.3.0] - 2026-02-19
 
