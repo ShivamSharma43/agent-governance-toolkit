@@ -66,6 +66,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CRD (`rollbackConditions[].operator`) accepts `gt` and `lt`, but
   `should_rollback()` only handled `gte` and `lte` and returned `False` for
   anything else, so those rollback conditions never fired.
+- `ToolCallFrequencyAnalyzer.score()` now scores only call counts above the
+  baseline. It used the absolute z-score, so a quiet window, or a window that had
+  just started, scored as high as a spike, and `RogueAgentDetector.assess()`
+  rated an agent with a steady baseline as `CRITICAL` and recommended quarantine
+  right after each window boundary.
 - `FleetManager.status()` now reports `CRITICAL` when most agents are unhealthy,
   counting degraded agents as well as unresponsive ones. It only counted
   unresponsive agents, so a fleet where every agent was degraded (or two of three
