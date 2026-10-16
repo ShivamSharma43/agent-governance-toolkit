@@ -66,6 +66,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CRD (`rollbackConditions[].operator`) accepts `gt` and `lt`, but
   `should_rollback()` only handled `gte` and `lte` and returned `False` for
   anything else, so those rollback conditions never fired.
+- `TraceContext.from_traceparent()` now reads the sampled flag from bit 0 of the
+  trace-flags byte, as W3C Trace Context defines it. Only the exact value `01`
+  counted as sampled, so a sampled `traceparent` with other flag bits set (such
+  as `03`) was parsed as not sampled and forwarded downstream as `00`. Trace
+  flags that are not two hex digits now raise `ValueError` like other malformed
+  headers (#4334).
 
 ## [0.3.0] - 2026-02-19
 
