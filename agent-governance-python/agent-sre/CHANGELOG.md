@@ -71,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   just started, scored as high as a spike, and `RogueAgentDetector.assess()`
   rated an agent with a steady baseline as `CRITICAL` and recommended quarantine
   right after each window boundary.
+- `FleetManager.status()` now reports `CRITICAL` when most agents are unhealthy,
+  counting degraded agents as well as unresponsive ones. It only counted
+  unresponsive agents, so a fleet where every agent was degraded (or two of three
+  were degraded and the third unresponsive) was reported as `DEGRADED`.
 - `TraceContext.from_traceparent()` now reads the sampled flag from bit 0 of the
   trace-flags byte, as W3C Trace Context defines it. Only the exact value `01`
   counted as sampled, so a sampled `traceparent` with other flag bits set (such
