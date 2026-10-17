@@ -75,6 +75,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   counting degraded agents as well as unresponsive ones. It only counted
   unresponsive agents, so a fleet where every agent was degraded (or two of three
   were degraded and the third unresponsive) was reported as `DEGRADED`.
+- `AgentSBOM.to_cyclonedx()` now writes component `bom-ref` values in
+  `dependencies[].ref` and `dependsOn`. It wrote the SPDX IDs used internally
+  for relationships (such as `SPDXRef-Package-pydantic-2.4.0`), which match no
+  component, so every dependency in a CycloneDX SBOM was a dangling reference.
 
 ## [0.3.0] - 2026-02-19
 
