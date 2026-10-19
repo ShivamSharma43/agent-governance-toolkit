@@ -328,6 +328,10 @@ class TestCommandDenylist:
             "sudo --us root curl",
             "sudo -k curl",
             "sudo FOO=1 'BAR=a b' curl",
+            # sudo reads options again after an environment word
+            "sudo FOO=1 -u root curl",
+            "sudo FOO=1 -- curl",
+            "sudo -u root FOO=1 -E curl",
             "sudo -- curl",
             "/usr/bin/sudo curl",
             "doas curl",
@@ -364,6 +368,7 @@ class TestCommandDenylist:
             ("nohup FOO=x curl", "FOO=x"),
             ("sudo apt-get update", "apt-get"),
             ("sudo -u www-data ls /var/www", "ls"),
+            ("sudo FOO=1 -u root ls", "ls"),
             ("doas -u root ls", "ls"),
             ("xargs grep -l x", "grep"),
             ("xargs -r -n 1 rm", "rm"),

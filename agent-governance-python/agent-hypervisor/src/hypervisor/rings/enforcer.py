@@ -174,6 +174,9 @@ class _WrapperSyntax:
         operands: Operands read before the command (the duration of ``timeout``).
         assignments: Whether ``NAME=VALUE`` words before the command are read
             (``env``, ``sudo``), including a lone "-" right after the options.
+        interleaved_assignments: Whether ``NAME=VALUE`` words can also come
+            between the options (``sudo``). Such a word does not start with "/"
+            or "=".
         numeric_options: Whether "-N", "--N" and "-+N" set a value (``nice``).
     """
 
@@ -185,6 +188,7 @@ class _WrapperSyntax:
     unsupported: frozenset[str] = frozenset()
     operands: int = 0
     assignments: bool = False
+    interleaved_assignments: bool = False
     numeric_options: bool = False
 
 
@@ -290,6 +294,8 @@ _WRAPPERS: dict[str, _WrapperSyntax] = {
         # either --help or --host with an attached or a following argument
         unsupported=frozenset({"-i", "--login", "-s", "--shell", "-h"}),
         assignments=True,
+        # sudo reads an environment word and then resumes reading options
+        interleaved_assignments=True,
     ),
     "stdbuf": _WrapperSyntax(
         with_argument="ioe",
@@ -403,6 +409,9 @@ def _wrapped_command_index(words: list[str | None], i: int, syntax: _WrapperSynt
                     if i == end or words[i] is None:
                         return None
                 break
+            i += 1
+            continue
+        if syntax.interleaved_assignments and "=" in arg and arg[0] not in "/=":
             i += 1
             continue
         break
@@ -609,8 +618,9 @@ class RingEnforcer:
         against the base command name (the first command the shell would run).
         Variable assignments before it and wrappers that run it (``env``, ``exec``,
         ``nohup``, ``nice``, ``timeout``, ``stdbuf``, ``time``, ``command``,
-        ``builtin``, ``sudo``, ``doas``, ``xargs``) are skipped, and a wrapper whose options cannot be read is
-        denied. Matching is case-insensitive to prevent bypasses via case variation.
+        ``builtin``, ``sudo``, ``doas``, ``xargs``) are skipped, and a wrapper whose
+        options cannot be read is denied. Matching is case-insensitive to prevent
+        bypasses via case variation.
 
         Args:
             command: The command to check (e.g., "curl", "curl -X POST", "python3").
