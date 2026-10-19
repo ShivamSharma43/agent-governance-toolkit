@@ -737,7 +737,7 @@ The environment MUST expose a `terminated` property that returns
 | `total_episodes` | int | Number of episodes completed |
 | `total_steps` | int | Total steps across all episodes |
 | `total_violations` | int | Total violations across all episodes |
-| `successful_episodes` | int | Episodes with at least one violation-free, successful step |
+| `successful_episodes` | int | Episodes in which every step succeeded without a violation |
 | `success_rate` | float | `successful_episodes / max(total_episodes, 1)` |
 | `violations_per_episode` | float | `total_violations / max(total_episodes, 1)` |
 | `steps_per_episode` | float | `total_steps / max(total_episodes, 1)` |
