@@ -425,6 +425,7 @@ carloshvp
 carryforward
 carveout
 casefold
+cautogen
 cdylib
 cedarling
 cedarpy
@@ -701,6 +702,7 @@ langgenius
 lastgroup
 lawcontinue
 levelname
+llamaindexer
 lookahead
 lookaround
 lookarounds
@@ -745,6 +747,7 @@ matplotlib
 maturin
 maxlen
 maxsplit
+mcpython
 memswap
 metavar
 mget
@@ -906,6 +909,7 @@ psmodules
 psour
 purelib
 pyatr
+pyautogen
 pycache
 pyclass
 pyjwt
