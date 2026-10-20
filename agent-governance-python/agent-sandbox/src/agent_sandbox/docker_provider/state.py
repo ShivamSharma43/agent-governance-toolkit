@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -13,6 +15,11 @@ if TYPE_CHECKING:
     from agent_sandbox.docker_provider.provider import DockerSandboxProvider
 
 logger = logging.getLogger(__name__)
+
+# One path component of a Docker image repository name (distribution
+# reference grammar): lowercase alphanumerics, joined by ``.``, ``_``,
+# ``__`` or runs of ``-``.
+_REPO_COMPONENT_RE = re.compile(r"^[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*$")
 
 
 @dataclass
@@ -40,7 +47,23 @@ class SandboxStateManager:
 
     @staticmethod
     def _repo_name(agent_id: str) -> str:
-        return f"agent-sandbox-{agent_id}"
+        """Return the image repository that holds *agent_id*'s checkpoints.
+
+        ``agent_id`` may contain uppercase letters and leading, trailing or
+        repeated separators, which a repository name cannot, so
+        ``docker commit`` would reject ``agent-sandbox-<agent_id>``. Such an
+        id gets a repository under ``agent-sandbox/`` named by a digest of
+        the exact id. Lowercasing alone would give ``Agent`` and ``agent``
+        one repository, and one agent's checkpoint would overwrite the
+        other's. Ids that already form a valid name keep their repository,
+        and as they contain no ``/`` they never land under ``agent-sandbox/``.
+        """
+        repo = f"agent-sandbox-{agent_id}"
+        if _REPO_COMPONENT_RE.match(repo):
+            return repo
+        hint = re.sub(r"[^a-z0-9]+", "-", agent_id.lower())[:32].strip("-")
+        digest = hashlib.sha256(agent_id.encode("utf-8")).hexdigest()[:16]
+        return f"agent-sandbox/{hint}-{digest}" if hint else f"agent-sandbox/{digest}"
 
     def save(
         self,

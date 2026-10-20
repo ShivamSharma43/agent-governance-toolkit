@@ -815,6 +815,49 @@ class TestSandboxStateManager:
         last_call = provider._create_container.call_args
         assert last_call.kwargs.get('image') == 'agent-sandbox-a1:cp1'
 
+    # Repository name grammar from the distribution reference spec: lowercase
+    # path components joined by "/", each made of alphanumerics joined by
+    # ".", "_", "__" or runs of "-".
+    _REPO_RE = re.compile(r'^[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*$')
+
+    @pytest.mark.parametrize('agent_id', ['Agent-1', 'agent-', 'agent_', 'a..b', 'a.-b', 'A'])
+    def test_checkpoint_repository_is_valid_for_any_agent_id(self, docker_provider, agent_id):
+        """agent_id accepts uppercase letters and leading, trailing or repeated
+        separators, which an image repository cannot hold, so the checkpoint
+        repository used to be agent-sandbox-<agent_id> and docker commit
+        rejected it."""
+        h = docker_provider.create_session(agent_id)
+        cp = docker_provider.save_state(agent_id, h.session_id, 'cp1')
+        repo = docker_provider._containers[agent_id, h.session_id].commit.call_args[1]['repository']
+        assert self._REPO_RE.match(repo), repo
+        assert len(repo) <= 255
+        assert cp.image_tag == f'{repo}:cp1'
+
+        docker_provider._client.images.get.return_value = MagicMock()
+        docker_provider.restore_state(agent_id, h.session_id, 'cp1')
+        assert docker_provider._create_container.call_args.kwargs.get('image') == f'{repo}:cp1'
+
+        docker_provider.list_checkpoints(agent_id)
+        assert docker_provider._client.images.list.call_args.kwargs == {'name': repo}
+        docker_provider.delete_checkpoint(agent_id, 'cp1')
+        docker_provider._client.images.remove.assert_called_with(image=f'{repo}:cp1', force=True)
+
+    def test_checkpoint_repositories_differ_for_ids_differing_in_case(self, docker_provider):
+        repos = set()
+        for agent_id in ('agent', 'Agent', 'AGENT'):
+            h = docker_provider.create_session(agent_id)
+            docker_provider.save_state(agent_id, h.session_id, 'cp1')
+            repos.add(docker_provider._containers[agent_id, h.session_id].commit.call_args[1]['repository'])
+        assert 'agent-sandbox-agent' in repos
+        assert len(repos) == 3
+
+    def test_checkpoint_repository_for_long_agent_id(self, docker_provider):
+        agent_id = 'A' * 128
+        h = docker_provider.create_session(agent_id)
+        docker_provider.save_state(agent_id, h.session_id, 'cp1')
+        repo = docker_provider._containers[agent_id, h.session_id].commit.call_args[1]['repository']
+        assert self._REPO_RE.match(repo), repo
+
 class TestMultiSessionIsolation:
 
     def test_separate_containers(self, docker_provider):
