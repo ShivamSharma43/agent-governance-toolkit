@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import asyncio
 import ntpath
+import random
 import re
 import shutil
+import string
 import subprocess
 import threading
 from pathlib import Path
@@ -852,11 +854,54 @@ class TestSandboxStateManager:
         assert len(repos) == 3
 
     def test_checkpoint_repository_for_long_agent_id(self, docker_provider):
-        agent_id = 'A' * 128
+        # 55 escaped characters is the most a 128-character id can carry
+        # within Docker's 255-character repository limit.
+        agent_id = 'A' * 55 + 'a' * 73
         h = docker_provider.create_session(agent_id)
         docker_provider.save_state(agent_id, h.session_id, 'cp1')
         repo = docker_provider._containers[agent_id, h.session_id].commit.call_args[1]['repository']
         assert self._REPO_RE.match(repo), repo
+        assert len(repo) <= 255
+
+    def test_checkpoint_repository_too_long_raises_before_commit(self, docker_provider):
+        agent_id = 'A' * 128
+        h = docker_provider.create_session(agent_id)
+        with pytest.raises(ValueError, match="limit of 255"):
+            docker_provider.save_state(agent_id, h.session_id, 'cp1')
+        docker_provider._containers[agent_id, h.session_id].commit.assert_not_called()
+
+    @staticmethod
+    def _decode_repo(repo):
+        """Read the agent id back from a checkpoint repository name."""
+        if not repo.startswith('agent-sandbox/id'):
+            return repo[len('agent-sandbox-'):]
+        encoded = repo[len('agent-sandbox/id'):]
+        chars, i = [], 0
+        while i < len(encoded):
+            if encoded[i] == '_':
+                chars.append(chr(int(encoded[i + 1:i + 3], 16)))
+                i += 3
+            else:
+                chars.append(encoded[i])
+                i += 1
+        return ''.join(chars)
+
+    def test_checkpoint_repository_encoding_is_reversible(self):
+        from agent_sandbox.docker_provider.state import SandboxStateManager
+
+        rng = random.Random(4370)
+        alphabet = string.ascii_letters + string.digits + '_.-'
+        ids = {'agent', 'Agent', 'AGENT', 'a-b', 'a_b', 'a.b', 'a--b', 'a-.b', 'a._b', 'agent-', 'id', 'Id', '_5f', 'a_41'}
+        for _ in range(5000):
+            length = rng.randint(1, 40)
+            ids.add(rng.choice(string.ascii_letters + string.digits) + ''.join(rng.choice(alphabet) for _ in range(length - 1)))
+        repos = {}
+        for agent_id in ids:
+            repo = SandboxStateManager._repo_name(agent_id)
+            assert self._REPO_RE.match(repo), (agent_id, repo)
+            assert self._decode_repo(repo) == agent_id, (agent_id, repo)
+            assert repo not in repos, (agent_id, repos.get(repo), repo)
+            repos[repo] = agent_id
 
 class TestMultiSessionIsolation:
 

@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
 from dataclasses import dataclass, field
@@ -20,7 +19,8 @@ logger = logging.getLogger(__name__)
 # reference grammar): lowercase alphanumerics, joined by ``.``, ``_``,
 # ``__`` or runs of ``-``.
 _REPO_COMPONENT_RE = re.compile(r"^[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*$")
-
+# Docker's limit on the length of a whole repository name.
+_REPO_NAME_MAX = 255
 
 @dataclass
 class SandboxCheckpoint:
@@ -52,18 +52,57 @@ class SandboxStateManager:
         ``agent_id`` may contain uppercase letters and leading, trailing or
         repeated separators, which a repository name cannot, so
         ``docker commit`` would reject ``agent-sandbox-<agent_id>``. Such an
-        id gets a repository under ``agent-sandbox/`` named by a digest of
-        the exact id. Lowercasing alone would give ``Agent`` and ``agent``
-        one repository, and one agent's checkpoint would overwrite the
-        other's. Ids that already form a valid name keep their repository,
-        and as they contain no ``/`` they never land under ``agent-sandbox/``.
+        id gets the repository ``agent-sandbox/id<escaped>``, where
+        ``<escaped>`` keeps lowercase letters and digits, keeps a single
+        ``-`` or ``.`` that sits between two kept characters, and writes
+        every other character as ``_`` and its code point in two lowercase
+        hex digits (``A`` -> ``_41``, ``_`` -> ``_5f``). ``_`` appears only
+        as the start of an escape and every escape has the same width, so
+        the id can be read back from the name and two ids never share a
+        repository; ``Agent`` and ``agent`` stay apart, which lowercasing
+        would not do. The ``id`` prefix keeps the component starting with
+        an alphanumeric when the id starts with an escaped character.
+
+        Ids that already form a valid name keep ``agent-sandbox-<agent_id>``,
+        so existing checkpoints are unaffected, and as such a name contains
+        no ``/`` it never collides with one under ``agent-sandbox/``.
+
+        Raises ``ValueError`` if the escaped name would exceed Docker's
+        255-character repository limit (a long id with many uppercase
+        letters), or if *agent_id* contains a character outside ASCII,
+        which ``create_session`` does not accept.
         """
         repo = f"agent-sandbox-{agent_id}"
         if _REPO_COMPONENT_RE.match(repo):
             return repo
-        hint = re.sub(r"[^a-z0-9]+", "-", agent_id.lower())[:32].strip("-")
-        digest = hashlib.sha256(agent_id.encode("utf-8")).hexdigest()[:16]
-        return f"agent-sandbox/{hint}-{digest}" if hint else f"agent-sandbox/{digest}"
+        if not agent_id.isascii():
+            raise ValueError(f"agent_id {agent_id!r} contains non-ASCII characters")
+
+        def kept(char: str) -> bool:
+            return char.isascii() and (char.islower() or char.isdigit())
+
+        escaped = []
+        for index, char in enumerate(agent_id):
+            if kept(char):
+                escaped.append(char)
+            elif (
+                char in "-."
+                and index > 0
+                and kept(agent_id[index - 1])
+                and index + 1 < len(agent_id)
+                and kept(agent_id[index + 1])
+            ):
+                escaped.append(char)
+            else:
+                escaped.append(f"_{ord(char):02x}")
+        repo = "agent-sandbox/id" + "".join(escaped)
+        if len(repo) > _REPO_NAME_MAX:
+            raise ValueError(
+                f"agent_id {agent_id!r} cannot be checkpointed: its image "
+                f"repository name would be {len(repo)} characters, over "
+                f"Docker's limit of {_REPO_NAME_MAX}"
+            )
+        return repo
 
     def save(
         self,
