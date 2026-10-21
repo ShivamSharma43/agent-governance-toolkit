@@ -859,6 +859,41 @@ class TestGovernedEnvironmentMetrics:
         assert m["total_episodes"] == 1
         assert m["total_steps"] == 2
 
+    def test_clean_episode_counts_once(self):
+        """Regression: every clean step used to add a successful episode,
+        so one clean five-step episode reported a success_rate of 5.0."""
+        env = GovernedEnvironment(_make_mock_kernel())
+        env.reset()
+        for i in range(5):
+            env.step(f"a{i}")
+        m = env.get_metrics()
+        assert m["successful_episodes"] == 1
+        assert m["success_rate"] == 1.0
+
+    def test_episode_with_a_violation_is_not_successful(self):
+        kernel = _make_mock_kernel()
+
+        def execute(action):
+            if action == "bad":
+                env._handle_violation("P", "blocked", "low", True)
+            return "result"
+
+        kernel.execute = MagicMock(side_effect=execute)
+        env = GovernedEnvironment(kernel)
+        env.reset()
+        for action in ("ok", "bad", "ok"):
+            env.step(action)
+        assert env.get_metrics()["successful_episodes"] == 0
+
+        # A clean second episode counts; the first one stays unsuccessful.
+        env.reset()
+        env.step("ok")
+        env.reset()
+        m = env.get_metrics()
+        assert m["total_episodes"] == 3
+        assert m["successful_episodes"] == 1
+        assert m["success_rate"] == pytest.approx(1 / 3)
+
 
 class TestCreateGovernedEnv:
     def test_factory(self):
