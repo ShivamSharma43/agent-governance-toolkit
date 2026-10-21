@@ -1023,6 +1023,18 @@ class TestFlightRecorderEmitterViolationSummary:
         assert summary["total_violations"] == 0
         assert summary["violation_rate"] == 0.0
 
+    def test_violation_summary_does_not_count_as_emitted(self):
+        entries = [_FakeEntry(violated=True), _FakeEntry(id="e2")]
+        emitter = FlightRecorderEmitter(_make_recorder(entries))
+        emitter.get_violation_summary()
+        emitter.get_violation_summary()
+        assert emitter.get_stats()["emitted_count"] == 0
+
+        store = MagicMock()
+        emitter.emit_to_store(store)
+        emitter.get_violation_summary()
+        assert emitter.get_stats()["emitted_count"] == 2
+
 
 class TestFlightRecorderEmitterStream:
     """``stream()`` is an async generator with a cooperative stop signal.
