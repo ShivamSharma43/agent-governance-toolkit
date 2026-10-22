@@ -1065,6 +1065,7 @@ socsec
 softmax
 spacy
 spanid
+spawnp
 specversion
 spellcheck
 spellchecking
