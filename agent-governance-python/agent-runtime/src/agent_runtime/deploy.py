@@ -236,7 +236,18 @@ class DockerDeployer:
         try:
             result = self._run(["inspect", container_name, "--format", "{{.State.Status}}"])
             state = result.stdout.strip()
-            status_map = {"running": DeploymentStatus.RUNNING, "exited": DeploymentStatus.STOPPED}
+            # A paused container (`docker pause`) is suspended, not broken,
+            # and one being removed is on its way out, as after `stop()`.
+            # The other states stay FAILED: `dead` is a failure, `created`
+            # means `docker run` could not start the container, and
+            # `restarting` means the agent process exited and the
+            # `unless-stopped` policy is bringing it back.
+            status_map = {
+                "running": DeploymentStatus.RUNNING,
+                "exited": DeploymentStatus.STOPPED,
+                "paused": DeploymentStatus.STOPPED,
+                "removing": DeploymentStatus.STOPPED,
+            }
             return DeploymentResult(
                 status=status_map.get(state, DeploymentStatus.FAILED),
                 target="docker",
