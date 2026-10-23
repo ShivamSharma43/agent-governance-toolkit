@@ -218,6 +218,23 @@ class TestDockerDeployer:
         result = deployer.status("agent-1")
         assert result.status == DeploymentStatus.STOPPED
 
+    @pytest.mark.parametrize(("state", "expected"), [
+        ("paused", DeploymentStatus.STOPPED),
+        ("removing", DeploymentStatus.STOPPED),
+        ("dead", DeploymentStatus.FAILED),
+        ("created", DeploymentStatus.FAILED),
+        ("restarting", DeploymentStatus.FAILED),
+    ])
+    @patch("agent_runtime.deploy.subprocess.run")
+    @patch("agent_runtime.deploy.shutil.which", return_value="/usr/bin/docker")
+    def test_status_other_docker_states(
+        self, mock_which: MagicMock, mock_run: MagicMock,
+        state: str, expected: DeploymentStatus,
+    ) -> None:
+        mock_run.return_value = MagicMock(stdout=f"{state}\n", stderr="", returncode=0)
+        deployer = DockerDeployer()
+        assert deployer.status("agent-1").status == expected
+
     @patch("agent_runtime.deploy.subprocess.run")
     @patch("agent_runtime.deploy.shutil.which", return_value="/usr/bin/docker")
     def test_logs_returns_output(
