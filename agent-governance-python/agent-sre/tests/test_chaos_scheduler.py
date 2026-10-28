@@ -131,6 +131,26 @@ class TestBlackoutWindows:
         at_noon = datetime(2025, 1, 6, 12, 30, 0, tzinfo=timezone.utc)
         assert scheduler.is_in_blackout(sched, at_noon) is True
 
+    @pytest.mark.parametrize("second", [0, 30, 59])
+    def test_end_minute_is_blocked_to_its_last_second(self, second: int) -> None:
+        bw = BlackoutWindow(start="17:00", end="23:59", reason="after hours")
+        schedule = _make_schedule(cron="59 23 * * *", blackouts=[bw])
+        scheduler = ChaosScheduler([schedule])
+        at = datetime(2025, 1, 6, 23, 59, second, tzinfo=timezone.utc)
+        assert scheduler.is_in_blackout(schedule, at) is True
+        assert scheduler.should_run("s1", at) is False
+
+    def test_midnight_wrap_end_minute_is_blocked(self) -> None:
+        bw = BlackoutWindow(start="22:00", end="06:00", reason="overnight")
+        at = datetime(2025, 1, 6, 6, 0, 45, tzinfo=timezone.utc)
+        assert bw.contains(at) is True
+
+    def test_minute_after_end_is_not_blocked(self) -> None:
+        bw = BlackoutWindow(start="12:00", end="13:00", reason="lunch")
+        assert bw.contains(datetime(2025, 1, 6, 13, 0, 59, tzinfo=timezone.utc)) is True
+        assert bw.contains(datetime(2025, 1, 6, 13, 1, 0, tzinfo=timezone.utc)) is False
+        assert bw.contains(datetime(2025, 1, 6, 11, 59, 59, tzinfo=timezone.utc)) is False
+
 
 # ---------------------------------------------------------------------------
 # Progressive severity
