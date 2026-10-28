@@ -18,14 +18,19 @@ class BlackoutWindow(BaseModel):
     reason: str = ""
 
     def contains(self, now: datetime) -> bool:
-        """Check if the given datetime falls within this blackout window."""
+        """Check if the given datetime falls within this blackout window.
+
+        The bounds are whole minutes and both are inclusive, so the end
+        minute is blocked until its last second, matching the minute
+        precision at which cron expressions are matched.
+        """
         try:
             start_time = _parse_time(self.start)
             end_time = _parse_time(self.end)
         except ValueError:
             return False
 
-        current_time = now.time()
+        current_time = now.time().replace(second=0, microsecond=0)
         if start_time <= end_time:
             return start_time <= current_time <= end_time
         # Wraps midnight (e.g. 22:00 - 06:00)
