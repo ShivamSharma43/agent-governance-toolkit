@@ -7,15 +7,24 @@ from __future__ import annotations
 
 from datetime import datetime, time
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class BlackoutWindow(BaseModel):
     """Time window during which chaos experiments must not run."""
 
-    start: str  # HH:MM or cron-like pattern
-    end: str  # HH:MM or cron-like pattern
+    start: str  # HH:MM, 24-hour clock
+    end: str  # HH:MM, 24-hour clock
     reason: str = ""
+
+    @field_validator("start", "end")
+    @classmethod
+    def _check_time(cls, value: str) -> str:
+        # A bound that cannot be read would make contains() report every
+        # time as outside the window, so chaos would run during the
+        # blackout. Reject it when the window is defined instead.
+        _parse_time(value)
+        return value
 
     def contains(self, now: datetime) -> bool:
         """Check if the given datetime falls within this blackout window.
