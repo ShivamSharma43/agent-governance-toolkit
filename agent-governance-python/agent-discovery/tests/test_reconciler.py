@@ -1,3 +1,4 @@
+# Copyright (c) Microsoft Corporation. Licensed under the MIT License.
 """Tests for reconciler and registry providers."""
 
 import pytest
